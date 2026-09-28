@@ -1,0 +1,5 @@
+
+virtual environment start karne ki:.\.venv\Scripts\Activate.ps1
+uvicorn port run karne ki: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+tunnel run karne ki: npx localtunnel --port 8000
+

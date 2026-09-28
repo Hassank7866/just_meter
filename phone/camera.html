@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Mobile ANPR Camera Scanner</title>
+  <style>
+    :root { color-scheme: dark; --primary: #38bdf8; --success: #45d483; --danger: #f43f5e; --warning: #fbbf24; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #090d14;
+      color: #edf2f7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    p.desc {
+      margin: 0 0 14px 0;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .area-select {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    select {
+      background: #131d2a;
+      color: #edf2f7;
+      width: 100%;
+      border: 1px solid #233348;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    select:focus { border-color: var(--primary); }
+    
+    /* Viewport Container for Video + Overlay Canvas */
+    .viewport-wrapper {
+      position: relative;
+      width: 100%;
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08);
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .hud-telemetry {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      font-size: 0.7rem;
+      font-family: monospace;
+      z-index: 5;
+    }
+    .hud-tag {
+      background: rgba(9, 13, 20, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #38bdf8;
+    }
+    .hud-live {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(9, 13, 20, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--success);
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    #start {
+      background: linear-gradient(135deg, #38bdf8, #2563eb);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+    }
+    #start:active { transform: scale(0.98); }
+    #stop {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    #stop:not(:disabled) {
+      color: #f43f5e;
+      border-color: rgba(244, 63, 94, 0.4);
+      background: rgba(244, 63, 94, 0.1);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    #status {
+      padding: 10px 0 6px 0;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #results {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .plate-card {
+      background: #131d2a;
+      border-radius: 12px;
+      padding: 12px 14px;
+      border-left: 4px solid #38bdf8;
+      border-top: 1px solid #1e2d40;
+      border-right: 1px solid #1e2d40;
+      border-bottom: 1px solid #1e2d40;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .plate-card.lawful { border-left-color: var(--success); }
+    .plate-card.violation { border-left-color: var(--danger); }
+    .plate-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .plate-number {
+      font-family: monospace;
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+    .plate-conf {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      font-family: monospace;
+    }
+    .plate-details {
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    .tag-violation {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(244, 63, 94, 0.2);
+      color: #fca5a5;
+      font-weight: 700;
+      font-size: 0.7rem;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+    }
+    .tag-lawful {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(69, 212, 131, 0.2);
+      color: #86efac;
+      font-weight: 700;
+      font-size: 0.7rem;
+      border: 1px solid rgba(69, 212, 131, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <span>MOBILE <strong style="color:var(--primary)">ANPR</strong></span>
+    </h1>
+    <span class="badge">AI SCANNER</span>
+  </div>
+
+  <p class="desc">Point camera at oncoming traffic. Real-time AI detects vehicles & license plates and syncs to the Web Dashboard.</p>
+
+  <div class="area-select">
+    <label for="camera-area">Camera Location Area</label>
+    <select id="camera-area" required>
+      <option value="">Select camera area…</option>
+      <option selected>Mzd. Division</option>
+      <option>Mirpur Division</option>
+      <option>Poonch Division</option>
+      <option>Federal Territory</option>
+      <option>Pakistan Provinces</option>
+    </select>
+  </div>
+
+  <div class="viewport-wrapper">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <canvas id="canvas" hidden></canvas>
+    
+    <div class="hud-telemetry">
+      <div class="hud-tag" id="hud-area">AREA: Mzd. Division</div>
+      <div class="hud-live" id="hud-status">
+        <span class="live-dot"></span>
+        <span id="hud-fps">STANDBY</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="start">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      Start Camera
+    </button>
+    <button id="stop" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+      Stop
+    </button>
+  </div>
+
+  <div id="status">Camera is standby.</div>
+  <div id="results"></div>
+
+  <script>
+    const video = document.querySelector('#video');
+    const overlay = document.querySelector('#overlay');
+    const canvas = document.querySelector('#canvas');
+    const status = document.querySelector('#status');
+    const results = document.querySelector('#results');
+    const cameraArea = document.querySelector('#camera-area');
+    const hudArea = document.querySelector('#hud-area');
+    const hudFps = document.querySelector('#hud-fps');
+    const ctx = overlay.getContext('2d');
+
+    let stream, timer, running = false, position = {};
+    let latestDetections = { vehicles: [], plates: [] };
+    let clearOverlayTimer = null;
+
+    cameraArea.addEventListener('change', () => {
+      hudArea.textContent = 'AREA: ' + (cameraArea.value || 'None');
+    });
+
+    function locate() {
+      if (!navigator.geolocation) {
+        status.textContent = 'Location not supported; detections saved without GPS.';
+        return;
+      }
+      navigator.geolocation.watchPosition(
+        p => {
+          position = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy };
+        },
+        e => {
+          status.textContent = 'GPS unavailable (' + e.message + '). Detections will record without GPS.';
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
+      );
+    }
+
+    function syncOverlayDimensions() {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        if (overlay.width !== video.videoWidth || overlay.height !== video.videoHeight) {
+          overlay.width = video.videoWidth;
+          overlay.height = video.videoHeight;
+        }
+      }
+    }
+
+    function drawBoundingBoxes(vehicles, plates) {
+      syncOverlayDimensions();
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      // 1. Draw Vehicle Bounding Boxes (Cyan / Blue Neon)
+      vehicles.forEach(v => {
+        const [x1, y1, x2, y2] = v.bbox;
+        const width = x2 - x1;
+        const height = y2 - y1;
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 10;
+
+        // Draw rectangle
+        ctx.strokeRect(x1, y1, width, height);
+
+        // Background tag for vehicle label
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.85)';
+        ctx.shadowBlur = 0;
+        const labelText = `🚗 ${(v.label || 'VEHICLE').toUpperCase()} ${Math.round(v.confidence * 100)}%`;
+        ctx.font = 'bold 14px monospace';
+        const textWidth = ctx.measureText(labelText).width;
+        
+        ctx.fillRect(x1, Math.max(0, y1 - 22), textWidth + 12, 22);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(labelText, x1 + 6, Math.max(16, y1 - 6));
+      });
+
+      // 2. Draw License Plate Bounding Boxes (Bright Green or Crimson Neon)
+      plates.forEach(p => {
+        const [x1, y1, x2, y2] = p.bbox;
+        const width = x2 - x1;
+        const height = y2 - y1;
+
+        const isViolation = p.compliance && p.compliance.status === 'VIOLATION';
+        const isLawful = p.compliance && p.compliance.status === 'LAWFUL';
+        const color = isViolation ? '#f43f5e' : (isLawful || p.saved ? '#45d483' : '#38bdf8');
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14;
+
+        ctx.strokeRect(x1, y1, width, height);
+
+        // Plate Tag with Plate Number
+        ctx.fillStyle = isViolation ? 'rgba(244, 63, 94, 0.95)' : 'rgba(16, 185, 129, 0.95)';
+        ctx.shadowBlur = 0;
+        const plateText = `📋 ${p.plate_number} (${Math.round(p.confidence * 100)}%)`;
+        ctx.font = 'bold 15px monospace';
+        const textWidth = ctx.measureText(plateText).width;
+
+        const tagY = y2 + 22 < overlay.height ? y2 : Math.max(22, y1 - 6);
+        ctx.fillRect(x1, tagY, textWidth + 12, 24);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(plateText, x1 + 6, tagY + 17);
+      });
+
+      // Clear boxes after 2.5s of no detections
+      clearTimeout(clearOverlayTimer);
+      clearOverlayTimer = setTimeout(() => {
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+      }, 2500);
+    }
+
+    let isCapturing = false;
+
+    async function capture() {
+      if (!running || video.videoWidth === 0 || isCapturing) return;
+      isCapturing = true;
+
+      // Optimize frame resolution for fast upload & inference (max width 960)
+      const maxW = 960;
+      let targetW = video.videoWidth;
+      let targetH = video.videoHeight;
+      if (targetW > maxW) {
+        const scale = maxW / targetW;
+        targetW = maxW;
+        targetH = Math.round(targetH * scale);
+      }
+
+      canvas.width = targetW;
+      canvas.height = targetH;
+      canvas.getContext('2d').drawImage(video, 0, 0, targetW, targetH);
+
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.70));
+      const form = new FormData();
+      form.append('file', blob, 'frame.jpg');
+      form.append('camera_area', cameraArea.value);
+      for (const [key, value] of Object.entries(position)) {
+        form.append(key === 'accuracy' ? 'location_accuracy_m' : key, value);
+      }
+
+      try {
+        const startTime = Date.now();
+        hudFps.textContent = 'SCANNING…';
+        const res = await fetch('/camera/frame', { method: 'POST', body: form });
+        if (!res.ok) throw Error(await res.text());
+        const data = await res.json();
+        
+        const latency = Date.now() - startTime;
+        hudFps.textContent = `${latency}ms`;
+
+        // Render real-time AI bounding boxes on canvas
+        drawBoundingBoxes(data.vehicles || [], data.plates || []);
+        show(data);
+
+        status.textContent = `Found ${data.vehicles.length} vehicle(s), ${data.plates.length} plate(s). GPS: ${data.latitude == null ? 'not available' : 'recorded'}`;
+      } catch (e) {
+        hudFps.textContent = 'ERR';
+        status.textContent = 'Upload/analysis: ' + e.message;
+      } finally {
+        isCapturing = false;
+      }
+    }
+
+    async function startContinuousScannerLoop() {
+      while (running) {
+        await capture();
+        // Short 120ms pause between frames for continuous real-time scanning
+        await new Promise(r => setTimeout(r, 120));
+      }
+    }
+
+    function show(data) {
+      if (!data.plates || data.plates.length === 0) {
+        results.innerHTML = '<div style="color:#64748b;font-size:0.8rem;text-align:center;padding:8px">No readable plate in current frame.</div>';
+        return;
+      }
+      results.innerHTML = data.plates.map(p => {
+        const c = p.compliance;
+        const isViolation = c && c.status === 'VIOLATION';
+        const isLawful = c && c.status === 'LAWFUL';
+        const cardClass = isViolation ? 'violation' : (isLawful ? 'lawful' : '');
+        
+        const government = p.government_match ? `
+          <div style="margin-top:6px;font-size:0.8rem;color:#94a3b8">
+            🏛️ <strong>${p.government_match.department || 'Govt Vehicle'}</strong> (${p.government_match.vehicle_id || ''})
+          </div>
+          ${isViolation ? `<span class="tag-violation">🚨 VIOLATION: ${c.violation_criteria || 'COMPLIANCE FAILURE'}</span>` : ''}
+          ${isLawful ? `<span class="tag-lawful">✓ LAWFUL SIGHTING</span>` : ''}
+        ` : '';
+
+        return `
+          <div class="plate-card ${cardClass}">
+            <div class="plate-header">
+              <span class="plate-number">${p.plate_number}</span>
+              <span class="plate-conf">${(p.confidence * 100).toFixed(1)}% Conf</span>
+            </div>
+            <div class="plate-details">
+              ${p.saved ? '<span style="color:#45d483">✓ Saved to records</span>' : (p.reason ? `<span style="color:#fbbf24">(${p.reason})</span>` : '')}
+              ${government}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    document.querySelector('#start').onclick = async () => {
+      if (!cameraArea.value) {
+        status.textContent = 'Please select the camera location area first.';
+        cameraArea.focus();
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        running = true;
+        cameraArea.disabled = true;
+        locate();
+        startContinuousScannerLoop();
+        document.querySelector('#start').disabled = true;
+        document.querySelector('#stop').disabled = false;
+        status.textContent = 'Camera active in ' + cameraArea.value + '.';
+        hudFps.textContent = 'ACTIVE';
+      } catch (e) {
+        status.textContent = 'Cannot open camera: ' + e.message;
+      }
+    };
+
+    document.querySelector('#stop').onclick = () => {
+      running = false;
+      stream?.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      cameraArea.disabled = false;
+      document.querySelector('#start').disabled = false;
+      document.querySelector('#stop').disabled = true;
+      status.textContent = 'Camera stopped.';
+      hudFps.textContent = 'STANDBY';
+    };
+  </script>
+</body>
+</html>

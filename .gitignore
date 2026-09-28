@@ -1,0 +1,45 @@
+# Python Virtual Environment and Bytecode
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Node.js Dependencies and Build Artifacts
+node_modules/
+**/node_modules/
+dist/
+frontend/dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# WhatsApp Bridge Session & Credentials (Do NOT commit sensitive session data)
+whatsapp-bridge/auth_info/
+auth_info/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Third-Party Executables & Source Repositories
+cloudflared.exe
+cloudflared-master/
+
+# Runtime Detections, Logs & Snapshots
+data/detections.csv
+data/government_vehicles_spotted.csv
+data/*.backup.csv
+data/*.phase2-backup.csv
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/sample_challan.pdf
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+*.log
