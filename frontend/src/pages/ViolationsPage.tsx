@@ -1,12 +1,16 @@
+import { RiskAssessmentPanel } from '../components/RiskAssessmentPanel';
 import React, { useState, useEffect } from 'react';
 import {
   VehicleViolationSummary,
   ViolationRecord,
   fetchViolationsSummary,
+  snapshotUrl,
 } from '../api/client';
 import { ChallanModal } from '../components/ChallanModal';
 import { NotificationModal } from '../components/NotificationModal';
 import { Modal } from '../components/Modal';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../context/permissions';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -32,7 +36,12 @@ interface ViolationsPageProps {
   onOpenWhatsAppSettings?: () => void;
 }
 
+import { VehicleProfileLink } from '../components/VehicleProfileLink';
+
 export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSettings }) => {
+  const { user } = useAuth();
+  const canTakeEnforcementAction = can(user?.role, 'challan_actions');
+  const canSendNotifications = user?.role === 'Administrator' || user?.role === 'Supervisory Officer';
   const [violations, setViolations] = useState<VehicleViolationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,10 +108,12 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
   const totalFineAmount = violations.reduce((acc, v) => acc + (v.fine_amount || 0), 0);
 
   const handleOpenChallan = (v: VehicleViolationSummary) => {
-    setSelectedChallanVehicle(v);
+    window.dispatchEvent(new CustomEvent('justmeter:challan', { detail: { vehicleId: v.database_vehicle_id } }));
   };
 
   const handleOpenNotification = (v: VehicleViolationSummary) => {
+    if (!canSendNotifications) return;
+    if (v.total_violations >= 4) { handleOpenChallan(v); return; }
     setNotificationVehicle(v);
   };
 
@@ -151,7 +162,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
             <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
               <strong>Violations 1–3:</strong> Dispatches formal compliance warnings to the assigned officer.
               <br />
-              <strong>Violation 4+:</strong> Generates an official Departmental Fee Challan (PKR 2,500 base + PKR 1,000/extra) with photo evidence.
+              <strong>Violation 4+:</strong> Creates a draft for evidence review and officer approval before issuance (prototype fine: PKR 2,500 base + PKR 1,000/extra).
             </p>
           </div>
         </div>
@@ -205,27 +216,29 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
         {/* Card 3: Challans Issued (4+) */}
         <div className="glass-card p-4 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Challan Issued (4+)</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Challan Eligible (4+)</span>
             <ShieldAlert size={16} className="text-rose-500" />
           </div>
           <div className="text-2xl font-black font-mono text-rose-400">
             {vehiclesWithChallans}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">Departmental fine active</p>
+          <p className="text-[10px] text-slate-400 mt-1">Officer case review required</p>
         </div>
 
         {/* Card 4: Total Fines Levied */}
         <div className="glass-card p-4 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Total Fines Levied</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Proposed Fines</span>
             <DollarSign size={16} className="text-emerald-400" />
           </div>
           <div className="text-2xl font-black font-mono text-emerald-300">
             PKR {totalFineAmount.toLocaleString()}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">Assessed penalty revenue</p>
+          <p className="text-[10px] text-slate-400 mt-1">Estimates before case approval</p>
         </div>
       </div>
+
+      <RiskAssessmentPanel />
 
       {/* Filter and Search Bar */}
       <div className="glass-card p-4 rounded-2xl border border-slate-800/90 flex flex-col md:flex-row items-center justify-between gap-3">
@@ -291,7 +304,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
             }`}
           >
-            <span>Challan Issued (4+)</span>
+            <span>Challan Eligible (4+)</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500/30 text-rose-200 font-mono">
               {vehiclesWithChallans}
             </span>
@@ -349,14 +362,16 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                   <th>Department & ID</th>
                   <th>Assigned Officer</th>
                   <th>Escalation Level</th>
-                  <th>Fine Penalty</th>
+                  <th>Proposed Fine</th>
                   <th>Latest Incident</th>
                   <th className="text-center min-w-[320px]">Enforcement Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedViolations.map((v) => {
-                  const isChallan = v.stage_type === 'challan' || v.total_violations >= 4;
+                  const isChallan = v.stage_type
+                    ? v.stage_type === 'challan'
+                    : v.total_violations >= 4;
                   const progressPct = Math.min(100, (v.total_violations / 4) * 100);
 
                   return (
@@ -366,6 +381,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                         <span className="license-plate-badge text-xs">
                           {v.plate_number}
                         </span>
+                        <VehicleProfileLink reference={v.violations_history[0]?._record_key ? { sighting_key: v.violations_history[0]._record_key } : { plate: v.plate_number }} />
                       </td>
 
                       {/* Department & ID */}
@@ -441,6 +457,17 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                               style={{ width: `${progressPct}%` }}
                             ></div>
                           </div>
+                          <div
+                            title={(v.risk_factors || []).join(' | ')}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold ${
+                              v.risk_level === 'CRITICAL' ? 'bg-rose-500/20 text-rose-200 border-rose-500/40' :
+                              v.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-200 border-orange-500/40' :
+                              v.risk_level === 'MEDIUM' ? 'bg-amber-500/15 text-amber-200 border-amber-500/30' :
+                              'bg-slate-700/50 text-slate-300 border-slate-600'
+                            }`}
+                          >
+                            Risk {v.risk_level || 'NOT ASSESSED'} · {v.risk_score ?? 0}/100
+                          </div>
                         </div>
                       </td>
 
@@ -485,30 +512,44 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                           </button>
 
                           {/* Button 2: WhatsApp Notice Dispatch */}
-                          <button
+                          {canSendNotifications && <button
                             type="button"
                             onClick={() => handleOpenNotification(v)}
-                            className="h-8 px-2.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-600/25 text-emerald-300 hover:text-emerald-100 border border-emerald-500/30 text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95"
-                            title="Dispatch formal notice via WhatsApp"
+                            className={`h-8 px-2.5 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95 ${
+                              isChallan
+                                ? 'bg-emerald-500/15 hover:bg-emerald-600/25 text-emerald-300 hover:text-emerald-100 border border-emerald-500/30'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/50 shadow-emerald-600/20'
+                            }`}
+                            title={isChallan ? 'Dispatch formal notice via WhatsApp' : 'Issue the warning notice for this warning-stage violation'}
                           >
                             <Share2 size={13} className="text-emerald-400" />
                             <span>Notice</span>
-                          </button>
+                          </button>}
 
-                          {/* Button 3: Generate Official Challan (Always opens Challan modal) */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenChallan(v)}
-                            className={`h-8 px-3 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95 ${
-                              isChallan
-                                ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-rose-600/30 border border-rose-400/40'
-                                : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-rose-100 border border-rose-500/40'
-                            }`}
-                            title="Generate Official Departmental E-Challan with photographic evidence"
-                          >
-                            <FileText size={13} className={isChallan ? 'text-white' : 'text-rose-400'} />
-                            <span>{isChallan ? 'Generate Challan' : 'Official Challan'}</span>
-                          </button>
+                          {/* Warning-stage records cannot open the challan preview. */}
+                          {canTakeEnforcementAction && (isChallan ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChallan(v)}
+                              className="h-8 px-3 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-rose-600/30 border border-rose-400/40"
+                              title="Generate Official Departmental E-Challan with photographic evidence"
+                            >
+                              <FileText size={13} className="text-white" />
+                              <span>Open Cases</span>
+                            </button>
+                          ) : (
+                            <span title="Challan is available only after escalation to challan stage">
+                              <button
+                                type="button"
+                                disabled
+                                className="h-8 px-3 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 border border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed"
+                                aria-label="Generate Challan disabled until escalation"
+                              >
+                                <FileText size={13} />
+                                <span>Challan after escalation</span>
+                              </button>
+                            </span>
+                          ))}
                         </div>
                       </td>
                     </tr>
@@ -599,20 +640,38 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
               >
                 Close
               </button>
-              {historyVehicle && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const v = historyVehicle;
-                    setHistoryVehicle(null);
-                    handleOpenChallan(v);
-                  }}
-                  className="h-8 px-3 rounded-lg bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 transition-all hover:scale-[1.02] active:scale-95 border border-rose-400/40"
-                  title="Generate official fee challan document for this vehicle"
-                >
-                  <FileText size={13} />
-                  <span>Generate Official Challan</span>
-                </button>
+              {historyVehicle && canTakeEnforcementAction && (historyVehicle.total_violations >= 4 || canSendNotifications) && (
+                (historyVehicle.stage_type
+                  ? historyVehicle.stage_type === 'challan'
+                  : historyVehicle.total_violations >= 4) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = historyVehicle;
+                      setHistoryVehicle(null);
+                      handleOpenChallan(v);
+                    }}
+                    className="h-8 px-3 rounded-lg bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 transition-all hover:scale-[1.02] active:scale-95 border border-rose-400/40"
+                    title="Generate official fee challan document for this vehicle"
+                  >
+                    <FileText size={13} />
+                    <span>Open Challan Cases</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = historyVehicle;
+                      setHistoryVehicle(null);
+                      handleOpenNotification(v);
+                    }}
+                    className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 border border-emerald-400/50"
+                    title="Issue the warning notice for this warning-stage violation"
+                  >
+                    <Share2 size={13} />
+                    <span>Issue Notice</span>
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -651,16 +710,39 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onOpenWhatsAppSe
                 )}
               </div>
 
+              <div className="rounded-lg bg-slate-950/50 border border-slate-800 p-2 text-xs">
+                <div className="flex flex-wrap justify-between gap-2 text-slate-300">
+                  <span>{record.decision_reason || 'Compliance rule failure recorded.'}</span>
+                  <span className="font-semibold text-amber-300">Risk {record.risk_level || 'NOT ASSESSED'} · {record.risk_score ?? 0}/100</span>
+                </div>
+                {Array.isArray(record.decision_rules) && record.decision_rules.length > 0 && (
+                  <details className="mt-2 text-slate-400">
+                    <summary className="cursor-pointer select-none hover:text-slate-200">Rule evaluation details</summary>
+                    <ul className="mt-2 space-y-1 pl-2">
+                      {record.decision_rules.map((rule, ruleIndex) => (
+                        <li key={`${rule.rule_id}-${ruleIndex}`}>
+                          <span className={rule.outcome === 'FAIL' ? 'text-rose-300' : 'text-emerald-300'}>{rule.outcome}</span>
+                          {' | '}{rule.rule_id}: {rule.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {Array.isArray(record.risk_factors) && record.risk_factors.length > 0 && (
+                  <div className="mt-2 text-slate-500">Risk factors: {record.risk_factors.join(', ')}</div>
+                )}
+              </div>
+
               {/* Snapshot Image Preview */}
               {record.image && (
                 <div className="relative rounded-lg overflow-hidden border border-slate-800 bg-black/50 aspect-video max-h-48">
                   <img
-                    src={`/snapshots/${record.image}`}
+                    src={snapshotUrl(record.image)}
                     alt={`Snapshot for ${historyVehicle.plate_number}`}
                     className="w-full h-full object-contain"
                   />
                   <a
-                    href={`/snapshots/${record.image}`}
+                    href={snapshotUrl(record.image)}
                     target="_blank"
                     rel="noreferrer"
                     className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/80 text-sky-400 text-[10px] font-mono hover:text-white flex items-center gap-1"

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "source": "sample-vims",
+  "batch_id": "sample-001",
+  "exported_at": "2026-10-07T09:00:00+05:00",
+  "departments": [{"external_id": "DEP-EXAMPLE", "name": "Example Transport Department"}],
+  "vehicles": [{
+    "external_id": "VEH-EXAMPLE", "vehicle_id": "EXAMPLE-001", "plate_number": "SAMPLE001",
+    "department_external_id": "DEP-EXAMPLE", "vehicle_type": "car",
+    "make": "Toyota", "model": "Corolla", "color": "White",
+    "authorized_areas": ["Mzd. Division"], "duty_schedule": "09:00-17:00"
+  }],
+  "drivers": [{"external_id": "DRV-EXAMPLE", "name": "Example Driver", "department_external_id": "DEP-EXAMPLE"}],
+  "assignments": [{
+    "external_id": "ASN-EXAMPLE", "vehicle_external_id": "VEH-EXAMPLE",
+    "department_external_id": "DEP-EXAMPLE", "driver_external_id": "DRV-EXAMPLE",
+    "officer_name": "Example Transport Officer",
+    "valid_from": "2026-10-01T00:00:00+05:00", "valid_until": "2026-11-01T00:00:00+05:00"
+  }],
+  "duty_slips": [{
+    "external_id": "DUTY-EXAMPLE", "assignment_external_id": "ASN-EXAMPLE",
+    "valid_from": "2026-10-07T09:00:00+05:00", "valid_until": "2026-10-07T17:00:00+05:00",
+    "destination": "Muzaffarabad Secretariat", "authorized_areas": ["Mzd. Division"],
+    "purpose": "Example official document delivery", "approved_by": "Example Supervisory Officer"
+  }]
+}

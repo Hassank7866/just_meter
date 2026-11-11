@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   QrCode,
   ShieldCheck,
+  FileVideo,
 } from 'lucide-react';
 import {
   LiveFrameData,
@@ -20,7 +21,14 @@ import {
   fetchLatestLiveFrame,
   analyzeCameraFrame,
   fetchCameraAreas,
+  analyzeRecordedVideo,
+  createLiveFeedSessionToken,
+  createMobileCameraSessionToken,
+  VideoAnalysisResult,
 } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../context/permissions';
+import { TrackingPanel } from '../components/TrackingPanel';
 
 interface LiveEventLog {
   id: string;
@@ -40,7 +48,8 @@ const SurveillanceCameraLogo: React.FC<{
   connectionStatus: 'connecting' | 'connected' | 'offline';
   onPairMobile: () => void;
   onStartLocal: () => void;
-}> = ({ streamSource, connectionStatus, onPairMobile, onStartLocal }) => {
+  canOperate: boolean;
+}> = ({ streamSource, connectionStatus, onPairMobile, onStartLocal, canOperate }) => {
   return (
     <div className="flex flex-col items-center justify-center p-6 text-center select-none animate-fade-in max-w-sm">
       {/* CCTV Security Camera SVG Graphic */}
@@ -124,6 +133,7 @@ const SurveillanceCameraLogo: React.FC<{
       {/* Action Button */}
       {streamSource === 'mobile' ? (
         <button
+          disabled={!canOperate}
           onClick={onPairMobile}
           className="mt-3 px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-sky-400 hover:text-sky-300 border border-zinc-700/80 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
         >
@@ -132,6 +142,7 @@ const SurveillanceCameraLogo: React.FC<{
         </button>
       ) : (
         <button
+          disabled={!canOperate}
           onClick={onStartLocal}
           className="mt-3 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-md shadow-sky-600/30"
         >
@@ -144,6 +155,8 @@ const SurveillanceCameraLogo: React.FC<{
 };
 
 export const LiveCameraPage: React.FC = () => {
+  const { user } = useAuth();
+  const canOperateCamera = can(user?.role, 'operate_camera');
   // Stream Source Selection
   const [streamSource, setStreamSource] = useState<'mobile' | 'local'>('mobile');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
@@ -154,8 +167,13 @@ export const LiveCameraPage: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showPhoneQrModal, setShowPhoneQrModal] = useState(false);
-  const [totalDetectionsCount, setTotalDetectionsCount] = useState({ vehicles: 0, plates: 0, violations: 0 });
+  const [phoneScannerUrl, setPhoneScannerUrl] = useState('');
+  const [totalDetectionsCount, setTotalDetectionsCount] = useState({ vehicles: 0, plates: 0, violations: 0, crossings: 0 });
   const [eventLogs, setEventLogs] = useState<LiveEventLog[]>([]);
+  const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysisResult | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoError, setVideoError] = useState('');
+  const [cameraError, setCameraError] = useState('');
   
   // Display & HUD Toggles
   const [showVehicleBoxes, setShowVehicleBoxes] = useState(true);
@@ -170,6 +188,7 @@ export const LiveCameraPage: React.FC = () => {
   // Computed feed active indicator
   const isFeedActive = streamSource === 'local' ? localCameraRunning : isMobileFeedActive;
   const [selectedCameraArea, setSelectedCameraArea] = useState('Mzd. Division');
+  const [cameraId, setCameraId] = useState('CAM-001');
   const [availableAreas, setAvailableAreas] = useState<string[]>([
     'Mzd. Division',
     'Mirpur Division',
@@ -228,7 +247,7 @@ export const LiveCameraPage: React.FC = () => {
   const handleIncomingFrame = (data: LiveFrameData) => {
     setLiveData(data);
 
-    const numVehicles = data.vehicles?.length || 0;
+    const numVehicles = data.new_track_count ?? data.vehicles?.length ?? 0;
     const numPlates = data.plates?.length || 0;
     let newViolations = 0;
 
@@ -256,6 +275,7 @@ export const LiveCameraPage: React.FC = () => {
         vehicles: prev.vehicles + numVehicles,
         plates: prev.plates + numPlates,
         violations: prev.violations + newViolations,
+        crossings: prev.crossings + (data.new_crossing_count ?? 0),
       }));
 
       playChime(newViolations > 0);
@@ -274,10 +294,12 @@ export const LiveCameraPage: React.FC = () => {
     let pingInterval: any = null;
     let watchdogInterval: any = null;
 
-    const connectWs = () => {
+    const connectWs = async () => {
       try {
         setConnectionStatus('connecting');
-        const url = getLiveCameraWebSocketUrl();
+        const session = await createLiveFeedSessionToken();
+        if (!isMounted) return;
+        const url = getLiveCameraWebSocketUrl(session.token);
         socket = new WebSocket(url);
         wsRef.current = socket;
 
@@ -397,6 +419,7 @@ export const LiveCameraPage: React.FC = () => {
       const formData = new FormData();
       formData.append('file', blob, 'webcam_frame.jpg');
       formData.append('camera_area', selectedCameraArea);
+      formData.append('camera_id', cameraId);
 
       const startT = Date.now();
       const result = await analyzeCameraFrame(formData);
@@ -409,8 +432,37 @@ export const LiveCameraPage: React.FC = () => {
     }
   };
 
-  const startLocalWebcam = async () => {
+  const handleRecordedVideo = async (file: File) => {
+    setVideoUploading(true);
+    setVideoError('');
+    setVideoAnalysis(null);
     try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('camera_area', selectedCameraArea);
+      formData.append('camera_id', cameraId || 'VIDEO-CAM-001');
+      formData.append('sample_every_n_frames', '15');
+      formData.append('max_analyzed_frames', '60');
+      const result = await analyzeRecordedVideo(formData);
+      setVideoAnalysis(result);
+      setTotalDetectionsCount((prev) => ({
+        ...prev,
+        vehicles: prev.vehicles + result.unique_vehicles,
+        crossings: prev.crossings + result.checkpoint_crossings,
+      }));
+    } catch (error) {
+      setVideoError(error instanceof Error ? error.message : 'Video analysis failed');
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const startLocalWebcam = async () => {
+    setCameraError('');
+    try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access requires http://localhost:5173 or an HTTPS address.');
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' },
         audio: false,
@@ -436,7 +488,8 @@ export const LiveCameraPage: React.FC = () => {
       };
       runLoop();
     } catch (err) {
-      alert('Could not start local camera: ' + (err instanceof Error ? err.message : String(err)));
+      const message = err instanceof Error ? err.message : String(err);
+      setCameraError(`Could not start laptop camera: ${message}`);
       stopLocalWebcam();
     }
   };
@@ -491,7 +544,7 @@ export const LiveCameraPage: React.FC = () => {
         top: `${Math.max(0, Math.min(100, top))}%`,
         width: `${Math.max(0, Math.min(100 - left, width))}%`,
         height: `${Math.max(0, Math.min(100 - top, height))}%`,
-        label: v.label.toUpperCase(),
+        label: `${v.label.toUpperCase()} ${v.track_id?.slice(-6) || ''}`.trim(),
         confidence: Math.round(v.confidence * 100),
         icon: getVehicleIcon(v.label),
       };
@@ -522,13 +575,28 @@ export const LiveCameraPage: React.FC = () => {
     });
   }, [liveData?.plates, frameWidth, frameHeight, showPlateBoxes]);
 
-  const mobileScannerUrl = `${window.location.protocol}//${window.location.hostname}:8000/`;
+  const configuredMobileUrl = import.meta.env.VITE_MOBILE_SCANNER_URL as string | undefined;
+  const mobileScannerUrl = configuredMobileUrl || `${window.location.protocol}//${window.location.hostname}:8000/`;
+  const handlePairMobile = async () => {
+    setCameraError('');
+    stopLocalWebcam();
+    setStreamSource('mobile');
+    try {
+      const session = await createMobileCameraSessionToken();
+      const url = new URL(mobileScannerUrl);
+      url.searchParams.set('token', session.token);
+      setPhoneScannerUrl(url.toString());
+      setShowPhoneQrModal(true);
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : 'Could not pair mobile camera');
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-full min-w-0 overflow-hidden bg-zinc-950 text-zinc-300 font-sans p-2.5 sm:p-3.5 gap-2.5 sm:gap-3 select-none">
+    <div className="flex flex-col min-h-[calc(100dvh-7rem)] lg:h-full lg:min-h-0 w-full max-w-full min-w-0 overflow-visible lg:overflow-hidden bg-zinc-950 text-zinc-300 font-sans p-2.5 sm:p-3.5 gap-2.5 sm:gap-3 select-none">
       
       {/* --- HEADER --- */}
-      <header className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-4 py-2 shrink-0 shadow-sm backdrop-blur-md">
+      <header className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 bg-zinc-900/40 border border-zinc-800/80 rounded-xl px-3 sm:px-4 py-2 shrink-0 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-blue-600/10 flex items-center justify-center border border-blue-500/20 shrink-0">
             <ShieldCheck className="text-blue-500" size={16} />
@@ -574,16 +642,16 @@ export const LiveCameraPage: React.FC = () => {
       </header>
 
       {/* --- MAIN BODY --- */}
-      <main className="flex-1 flex flex-col lg:flex-row gap-2.5 sm:gap-3 min-h-0 min-w-0 overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row gap-2.5 sm:gap-3 min-h-0 min-w-0 lg:overflow-hidden">
         
         {/* LEFT SIDEBAR: Controls & Stats */}
-        <aside className="w-full lg:w-52 xl:w-60 flex flex-col gap-2.5 shrink-0 min-w-0 overflow-y-auto custom-scrollbar">
+        <aside className="w-full lg:w-52 xl:w-60 flex flex-col gap-2.5 shrink-0 min-w-0 lg:overflow-y-auto custom-scrollbar">
           {/* Stats Box */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3 space-y-3">
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Session Metrics</h3>
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-1.5">
               <div className="bg-zinc-950/50 p-2.5 rounded-lg border border-zinc-800/60 flex items-center justify-between">
-                <span className="text-xs text-zinc-400">Vehicles</span>
+                <span className="text-xs text-zinc-400">New tracks</span>
                 <span className="text-base font-semibold text-zinc-200">{totalDetectionsCount.vehicles}</span>
               </div>
               <div className="bg-zinc-950/50 p-2.5 rounded-lg border border-zinc-800/60 flex items-center justify-between">
@@ -594,60 +662,79 @@ export const LiveCameraPage: React.FC = () => {
                 <span className="text-xs text-zinc-400">Violations</span>
                 <span className="text-base font-semibold text-rose-400">{totalDetectionsCount.violations}</span>
               </div>
+              <div className="bg-zinc-950/50 p-2.5 rounded-lg border border-emerald-900/30 flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Crossings</span>
+                <span className="text-base font-semibold text-emerald-400">{totalDetectionsCount.crossings}</span>
+              </div>
             </div>
           </div>
 
-          {/* Controls Box */}
-          <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 space-y-5 flex-1">
-            
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Feed Source</h3>
-              <div className="flex bg-zinc-950/50 rounded-lg border border-zinc-800/80 p-1">
-                <button
-                  onClick={() => {
+          <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3 space-y-2">
+            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Camera Source</h3>
+            <input
+              disabled={!canOperateCamera}
+              value={cameraId}
+              onChange={(e) => setCameraId(e.target.value)}
+              className="w-full bg-zinc-950/60 border border-zinc-800 rounded-lg px-2.5 py-2 text-xs text-zinc-200 outline-none focus:border-blue-500"
+              placeholder="CAM-001"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                disabled={!canOperateCamera}
+                onClick={() => {
+                  if (localCameraRunning) {
                     stopLocalWebcam();
-                    setStreamSource('mobile');
-                    setLiveData(null);
-                    setIsMobileFeedActive(false);
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    streamSource === 'mobile' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <Smartphone size={14} /> Mobile
-                </button>
-                <button
-                  onClick={() => {
+                  } else {
                     setStreamSource('local');
                     setLiveData(null);
                     setIsMobileFeedActive(false);
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    streamSource === 'local' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <Laptop size={14} /> Laptop
-                </button>
-              </div>
-            </div>
-
-            {streamSource === 'local' ? (
-              localCameraRunning ? (
-                <button onClick={stopLocalWebcam} className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/20 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all">
-                  <Square size={14} /> Stop Local Cam
-                </button>
-              ) : (
-                <button onClick={startLocalWebcam} className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20">
-                  <Play size={14} /> Start Local Cam
-                </button>
-              )
-            ) : (
-              <button onClick={() => setShowPhoneQrModal(true)} className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all">
-                <QrCode size={14} /> Pair Mobile Device
+                    void startLocalWebcam();
+                  }
+                }}
+                className={`py-2.5 text-white rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                  localCameraRunning ? 'bg-rose-600 hover:bg-rose-500' : 'bg-blue-600 hover:bg-blue-500'
+                }`}
+              >
+                {localCameraRunning ? <Square size={14} /> : <Laptop size={14} />}
+                {localCameraRunning ? 'Stop Laptop' : 'Laptop Camera'}
               </button>
+              <button
+                disabled={!canOperateCamera}
+                onClick={() => void handlePairMobile()}
+                className="py-2.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/20 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+              >
+                <Smartphone size={14} /> Mobile Camera
+              </button>
+            </div>
+            <label className="w-full py-2.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 border border-violet-500/20 rounded-xl text-xs font-medium flex items-center justify-center gap-2 cursor-pointer transition-all">
+              <FileVideo size={14} />
+              {videoUploading ? 'Analyzing video…' : 'Analyze Recorded Video'}
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,.mkv"
+                disabled={!canOperateCamera || videoUploading}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleRecordedVideo(file);
+                  e.currentTarget.value = '';
+                }}
+              />
+            </label>
+            {videoAnalysis && (
+              <p className="text-[11px] text-emerald-400">
+                {videoAnalysis.frames_analyzed} frames analyzed · {videoAnalysis.vehicles_detected} observations · {videoAnalysis.unique_vehicles} tracks · {videoAnalysis.checkpoint_crossings} crossings
+              </p>
             )}
+            {cameraError && <p className="text-[11px] leading-relaxed text-rose-400">{cameraError}</p>}
+            {videoError && <p className="text-[11px] text-rose-400">{videoError}</p>}
+          </div>
 
-            <div className="pt-4 border-t border-zinc-800/80 space-y-3">
+          {canOperateCamera && <TrackingPanel cameraId={cameraId} />}
+
+          {/* Overlay controls */}
+          <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 space-y-5 flex-1">
+            <div className="space-y-3">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Display Overlays</h3>
               <label className="flex items-center justify-between cursor-pointer group">
                 <span className="text-sm text-zinc-400 group-hover:text-zinc-300">Vehicle Tracking</span>
@@ -666,7 +753,7 @@ export const LiveCameraPage: React.FC = () => {
         </aside>
 
         {/* CENTER VIEWPORT: The Camera */}
-        <section className="flex-1 min-w-0 flex flex-col items-center justify-center bg-zinc-900/20 border border-zinc-800/80 rounded-xl relative min-h-0 overflow-hidden shadow-inner p-1 sm:p-2">
+        <section className="flex-1 min-w-0 min-h-[240px] sm:min-h-[320px] lg:min-h-0 flex flex-col items-center justify-center bg-zinc-900/20 border border-zinc-800/80 rounded-xl relative overflow-hidden shadow-inner p-1 sm:p-2">
           {/* Centered, restricted size video container */}
           <div 
             ref={viewportRef}
@@ -740,8 +827,9 @@ export const LiveCameraPage: React.FC = () => {
               <SurveillanceCameraLogo
                 streamSource={streamSource}
                 connectionStatus={connectionStatus}
-                onPairMobile={() => setShowPhoneQrModal(true)}
+                onPairMobile={() => void handlePairMobile()}
                 onStartLocal={startLocalWebcam}
+                canOperate={canOperateCamera}
               />
             )}
 
@@ -752,7 +840,7 @@ export const LiveCameraPage: React.FC = () => {
         </section>
 
         {/* RIGHT SIDEBAR: Live Logs */}
-        <aside className="w-full lg:w-64 xl:w-72 flex flex-col bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3 shrink-0 min-w-0 overflow-hidden min-h-0">
+        <aside className="w-full h-72 lg:h-auto lg:w-64 xl:w-72 flex flex-col bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3 shrink-0 min-w-0 overflow-hidden lg:min-h-0">
           <div className="flex items-center justify-between mb-3 shrink-0">
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
               <Activity size={14} className="text-blue-500" /> Live Feed Logs
@@ -805,7 +893,7 @@ export const LiveCameraPage: React.FC = () => {
               <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
                 <p className="font-medium text-white mb-2 text-sm">2. Enter URL on Mobile</p>
                 <div className="bg-black p-2.5 rounded border border-zinc-800 font-mono text-blue-400 text-xs text-center select-all">
-                  {mobileScannerUrl}
+                  {phoneScannerUrl || 'Preparing secure scanner link…'}
                 </div>
               </div>
             </div>

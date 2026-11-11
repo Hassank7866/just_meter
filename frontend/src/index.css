@@ -319,6 +319,21 @@ body {
   box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
 }
 
+.scrollbar-visible {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.6);
+}
+.scrollbar-visible > button {
+  flex-shrink: 0;
+}
+.scrollbar-visible::-webkit-scrollbar {
+  height: 5px;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 9999px;
+}
+
 /* Modal Overlay & Responsive Container */
 .modal-backdrop {
   position: fixed !important;
@@ -347,7 +362,7 @@ body {
   border-radius: 16px;
   box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.9), 0 0 35px rgba(56, 189, 248, 0.15);
   width: 100%;
-  max-height: 90vh;
+  max-height: min(90vh, 900px);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -365,6 +380,23 @@ body {
   padding: 20px;
   scrollbar-width: thin;
   scrollbar-color: #0284c7 rgba(15, 23, 42, 0.8);
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    height: 100dvh !important;
+    align-items: flex-start !important;
+    padding: 8px !important;
+  }
+
+  .modal-content-box {
+    max-height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+
+  .modal-scrollable-body {
+    padding: 12px;
+  }
 }
 
 .modal-scrollable-body::-webkit-scrollbar {

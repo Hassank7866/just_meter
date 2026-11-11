@@ -22,6 +22,7 @@ from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.graphics.barcode import qr
 
 from .config import settings
+from .escalation import is_challan_stage
 
 
 def generate_psid(plate_number: str, violation_count: int) -> str:
@@ -32,6 +33,8 @@ def generate_psid(plate_number: str, violation_count: int) -> str:
 
 def generate_challan_pdf_bytes(challan_data: dict[str, Any]) -> bytes:
     """Generate an official, professional PDF E-Challan document with chronological offenses and photo evidence."""
+    if not is_challan_stage(challan_data):
+        raise ValueError("Challan available only after escalation")
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,

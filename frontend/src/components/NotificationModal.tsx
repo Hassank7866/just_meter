@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { VehicleViolationSummary, sendViolationNotification } from '../api/client';
+import { VehicleViolationSummary, authenticatedResourceUrl, sendViolationNotification } from '../api/client';
 import { Modal } from './Modal';
 import {
   CheckCircle2,
@@ -77,7 +77,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
       const fineStr = `PKR ${vehicle.fine_amount.toLocaleString()}`;
       const numPart = (vehicle.plate_number.replace(/[^a-zA-Z0-9]/g, '').split('').map(c => c.charCodeAt(0)).join('') + '000000').slice(0, 6);
       const psidNumber = `9926${numPart}${String(vehicle.total_violations).padStart(2, '0')}1`;
-      const pdfUrl = `${window.location.origin}/api/challan/pdf/${encodeURIComponent(vehicle.plate_number)}`;
+      const pdfUrl = 'Retrieve the PDF from the authenticated Just Meter portal.';
 
       let text = `🚨 *OFFICIAL TRAFFIC / FLEET E-CHALLAN*\n🏛 *AJK / PK Government Fleet Command*\n━━━━━━━━━━━━━━━━━━━━━\nAttention: *${greeting}* ${deptStr}\nVehicle Plate: *${vehicle.plate_number}*\nChallan Number: *${vehicle.challan_id || 'CHL-2026'}*\nTotal Recorded Violations: *${vehicle.total_violations}*\nStatus: *4th Violation Policy Exceeded*\nFine Penalty Levied: *${fineStr}*\n━━━━━━━━━━━━━━━━━━━━━\n🏦 *PAYMENT & BANK PARTICULARS*:\n• Bank: *National Bank of Pakistan (NBP)*\n• Account Title: *Govt Fleet - Traffic Penalty Collection*\n• Bank IBAN: *PK36NBPA0000001284793012*\n• 1Bill / Online PSID: *${psidNumber}*\n• Online Payment: *Easypaisa / JazzCash / 1Bill / Banking Apps*\n━━━━━━━━━━━━━━━━━━━━━\n📄 *Download Official PDF Challan*:\n${pdfUrl}\n━━━━━━━━━━━━━━━━━━━━━\n`;
       if (customNote.trim()) {
@@ -163,7 +163,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
 
     // 2. Auto-download PDF document if challan
     if (isChallan) {
-      const pdfUrl = `/api/challan/pdf/${encodeURIComponent(vehicle.plate_number)}`;
+      const pdfUrl = authenticatedResourceUrl(`/api/challan/pdf/${encodeURIComponent(vehicle.plate_number)}`);
       const dlLink = document.createElement('a');
       dlLink.href = pdfUrl;
       dlLink.download = `E-Challan_${vehicle.plate_number}.pdf`;

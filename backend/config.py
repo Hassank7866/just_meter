@@ -33,6 +33,11 @@ class Settings:
     csv_path: Path = data_dir / "detections.csv"
     approved_vehicles_path: Path = data_dir / "approved_government_vehicles.csv"
     government_sightings_path: Path = data_dir / "government_vehicles_spotted.csv"
+    vehicle_events_path: Path = data_dir / "vehicle_detection_events.csv"
+    plate_recognition_path: Path = data_dir / "plate_recognition_events.csv"
+    plate_crops_dir: Path = snapshots_dir / "plates"
+    evidence_path: Path = data_dir / "evidence_records.csv"
+    evidence_images_dir: Path = snapshots_dir / "evidence"
     min_plate_confidence: float = float(os.getenv("MIN_PLATE_CONFIDENCE", "0.70"))
     min_vehicle_confidence: float = float(os.getenv("MIN_VEHICLE_CONFIDENCE", "0.45"))
     duplicate_cooldown_seconds: int = int(os.getenv("DUPLICATE_COOLDOWN_SECONDS", "15"))

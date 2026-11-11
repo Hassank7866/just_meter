@@ -439,7 +439,12 @@
       try {
         const startTime = Date.now();
         hudFps.textContent = 'SCANNING…';
-        const res = await fetch('/camera/frame', { method: 'POST', body: form });
+        const cameraToken = new URLSearchParams(window.location.search).get('token');
+        const res = await fetch('/camera/frame', {
+          method: 'POST',
+          body: form,
+          headers: cameraToken ? { Authorization: `Bearer ${cameraToken}` } : {},
+        });
         if (!res.ok) throw Error(await res.text());
         const data = await res.json();
         

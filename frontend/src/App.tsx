@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { can } from './context/permissions';
 import { LoginPage } from './pages/LoginPage';
 import { AuthorizedVehiclesPage } from './pages/AuthorizedVehiclesPage';
 import { SpottedVehiclesPage } from './pages/SpottedVehiclesPage';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { LiveCameraPage } from './pages/LiveCameraPage';
-import { Navbar } from './components/Navbar';
+import { ANPRReviewPage } from './pages/ANPRReviewPage';
+import { EvidencePage } from './pages/EvidencePage';
+import { GeofencesPage } from './pages/GeofencesPage';
+import { ExecutiveDashboardPage } from './pages/ExecutiveDashboardPage';
+import { VimsPage } from './pages/VimsPage';
+import { VehicleProfilePage } from './pages/VehicleProfilePage';
+import { ChallansPage, ChallanSelection } from './pages/ChallansPage';
+import { UsersPage, ReportsPage, AuditPage } from './pages/GovernancePages';
+import { TwinReference } from './api/client';
+import { Navbar, AppTab } from './components/Navbar';
 import { WhatsAppSettingsModal } from './components/WhatsAppSettingsModal';
 import {
   SystemStats,
@@ -15,13 +25,45 @@ import {
 } from './api/client';
 
 const Dashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'authorized' | 'spotted' | 'violations' | 'live-camera'>('authorized');
+  const { user } = useAuth();
+  const canManageSettings = can(user?.role, 'manage_settings');
+  const [activeTab, setActiveTab] = useState<AppTab>(user?.role === 'Auditor' ? 'reports' : 'dashboard');
+  const [vehicleReference, setVehicleReference] = useState<TwinReference | null>(null);
+  const [challanSelection, setChallanSelection] = useState<ChallanSelection | null>(null);
+  useEffect(() => {
+    const openChallan = (event: Event) => {
+      if (user?.role === 'Auditor') return;
+      setChallanSelection((event as CustomEvent<ChallanSelection>).detail);
+      setActiveTab('challans');
+    };
+    window.addEventListener('justmeter:challan', openChallan);
+    return () => window.removeEventListener('justmeter:challan', openChallan);
+  }, []);
+  useEffect(() => {
+    const openProfile = (event: Event) => {
+      if (user?.role === 'Auditor') return;
+      setVehicleReference((event as CustomEvent<TwinReference>).detail);
+      setActiveTab('digital-twin');
+    };
+    window.addEventListener('justmeter:vehicle-profile', openProfile);
+    return () => window.removeEventListener('justmeter:vehicle-profile', openProfile);
+  }, []);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [isWhatsAppConfigured, setIsWhatsAppConfigured] = useState(false);
+  const [forbiddenMessage, setForbiddenMessage] = useState('');
+
+  useEffect(() => {
+    const handleForbidden = (event: Event) => {
+      setForbiddenMessage((event as CustomEvent<string>).detail || 'Your role does not allow this action.');
+    };
+    window.addEventListener('justmeter:forbidden', handleForbidden);
+    return () => window.removeEventListener('justmeter:forbidden', handleForbidden);
+  }, []);
 
   const loadStats = async () => {
+    if (user?.role === 'Auditor') return;
     try {
       setIsRefreshing(true);
       const data = await fetchSystemStats();
@@ -34,6 +76,7 @@ const Dashboard: React.FC = () => {
   };
 
   const loadWhatsAppStatus = async () => {
+    if (!canManageSettings) return;
     try {
       const [gw, cfg] = await Promise.all([
         fetchWhatsAppGatewayStatus().catch(() => null),
@@ -56,20 +99,26 @@ const Dashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'live-camera') {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    const previousOverflow = document.body.style.overflow;
+    const updateScrollMode = () => {
+      const desktopLiveCamera = activeTab === 'live-camera'
+        && window.matchMedia('(min-width: 1024px)').matches;
+      document.body.style.overflow = desktopLiveCamera ? 'hidden' : '';
+    };
+    updateScrollMode();
+    window.addEventListener('resize', updateScrollMode);
     return () => {
-      document.body.style.overflow = '';
+      window.removeEventListener('resize', updateScrollMode);
+      document.body.style.overflow = previousOverflow;
     };
   }, [activeTab]);
 
   return (
     <div
       className={`bg-slate-950 text-slate-100 flex flex-col w-full max-w-full overflow-x-hidden ${
-        activeTab === 'live-camera' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen'
+        activeTab === 'live-camera'
+          ? 'min-h-screen lg:h-screen lg:max-h-screen lg:overflow-hidden'
+          : 'min-h-screen'
       }`}
     >
       {/* Aesthetic Top Navigation Bar */}
@@ -79,24 +128,57 @@ const Dashboard: React.FC = () => {
         stats={stats}
         onRefresh={loadStats}
         isRefreshing={isRefreshing}
-        onOpenWhatsAppSettings={() => setIsWhatsAppModalOpen(true)}
+        onOpenWhatsAppSettings={canManageSettings ? () => setIsWhatsAppModalOpen(true) : undefined}
         isWhatsAppConfigured={isWhatsAppConfigured}
       />
+
+      {forbiddenMessage && (
+        <div role="alert" className="mx-auto mt-3 w-full max-w-7xl px-4">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-700/60 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
+            <span>{forbiddenMessage}</span>
+            <button onClick={() => setForbiddenMessage('')} className="text-xs underline">Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {user && ['Transport Officer', 'Supervisory Officer'].includes(user.role) && !user.department_id && (
+        <p role="status" className="px-5 py-3 text-amber-200">Your account needs a department assignment. Ask an administrator to assign one in User access.</p>
+      )}
 
       {/* Main Dashboard Workspace */}
       <main
         className={`w-full max-w-full min-w-0 ${
           activeTab === 'live-camera'
-            ? 'flex-1 overflow-hidden flex flex-col'
+            ? 'flex-1 min-h-0 flex flex-col lg:overflow-hidden'
             : 'flex-1 max-w-7xl mx-auto pb-12'
         }`}
       >
-        {activeTab === 'authorized' ? (
+        {activeTab === 'users' && user?.role === 'Administrator' ? (
+          <UsersPage />
+        ) : activeTab === 'reports' ? (
+          <ReportsPage />
+        ) : activeTab === 'audit' ? (
+          <AuditPage />
+        ) : activeTab === 'dashboard' ? (
+          <ExecutiveDashboardPage onNavigate={setActiveTab} />
+        ) : activeTab === 'challans' ? (
+          <ChallansPage selection={challanSelection} />
+        ) : activeTab === 'digital-twin' ? (
+          <VehicleProfilePage reference={vehicleReference} />
+        ) : activeTab === 'vims' ? (
+          <VimsPage />
+        ) : activeTab === 'authorized' ? (
           <AuthorizedVehiclesPage />
         ) : activeTab === 'spotted' ? (
           <SpottedVehiclesPage />
+        ) : activeTab === 'anpr-review' ? (
+          <ANPRReviewPage />
+        ) : activeTab === 'evidence' ? (
+          <EvidencePage />
+        ) : activeTab === 'geofences' ? (
+          <GeofencesPage />
         ) : activeTab === 'violations' ? (
-          <ViolationsPage onOpenWhatsAppSettings={() => setIsWhatsAppModalOpen(true)} />
+          <ViolationsPage onOpenWhatsAppSettings={canManageSettings ? () => setIsWhatsAppModalOpen(true) : undefined} />
         ) : (
           <LiveCameraPage />
         )}

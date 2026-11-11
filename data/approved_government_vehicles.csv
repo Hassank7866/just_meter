@@ -101,3 +101,6 @@ AJK-TEST-099,DUMMY-GOV-099,Demo Forestry,Mirpur Division,09:00-17:00,Dummy test 
 AJK-TEST-100,DUMMY-GOV-100,Demo Tourism,Federal Territory|Pakistan Provinces|Mzd. Division|Poonch Division,24/7,Dummy test record - not a real vehicle; four authorized areas,,,
 AMA390,ama390,Police Department,Mzd. Division|Mirpur Division|Poonch Division,24/7,police ki gaari hae asp sahiba ki hae,ASP Ayesha Khan,03009876543,ayesha.khan@police.gov.pk
 ABU723,abu723,District Administration,Federal Territory|Mzd. Division|Mirpur Division|Poonch Division,24/7,AC saab di gadi hae,Capt. (R) Usman Ali (AC),03023334455,usman.ali@admin.gov.pk
+BLB780,DUMMY-GOV-101,Education Department,Federal Territory,09:00-17:00,,,,
+LMN123,GOV-100,Health,Mzd. Division,24/7,,,,
+BET-942,GOV-101,Education,Mzd. Division,09:00-17:00,,,,

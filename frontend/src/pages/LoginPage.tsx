@@ -23,9 +23,9 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleFillDemo = () => {
-    setEmail('admin@justmeter.gov');
-    setPassword('admin123');
+  const handleFillDemo = (address = 'admin@justmeter.gov', secret = 'admin123') => {
+    setEmail(address);
+    setPassword(secret);
   };
 
   return (
@@ -107,19 +107,17 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Quick Demo Helper / Default Credentials */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
             <span className="text-slate-400 flex items-center gap-1.5">
               <KeyRound size={13} className="text-sky-400 shrink-0" />
-              <span>Default Credentials:</span>
+              <span>Demo Accounts (click to fill):</span>
             </span>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="text-sky-400 hover:text-sky-300 font-mono font-medium px-2 py-0.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 transition-all text-[11px]"
-              title="Click to auto-fill credentials"
-            >
-              admin@justmeter.gov / admin123
-            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" onClick={() => handleFillDemo()} className="text-sky-300 hover:text-white font-mono px-2 py-1 rounded bg-sky-500/10 border border-sky-500/20 text-[10px]">Administrator · admin123</button>
+              <button type="button" onClick={() => handleFillDemo('transport@justmeter.gov', 'transport123')} className="text-sky-300 hover:text-white font-mono px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px]">Transport · transport123</button>
+              <button type="button" onClick={() => handleFillDemo('supervisor@justmeter.gov', 'supervisor123')} className="text-sky-300 hover:text-white font-mono px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px]">Supervisor · supervisor123</button>
+              <button type="button" onClick={() => handleFillDemo('auditor@justmeter.gov', 'auditor123')} className="text-sky-300 hover:text-white font-mono px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px]">Auditor · auditor123</button>
+            </div>
           </div>
 
           {/* Submit Button */}

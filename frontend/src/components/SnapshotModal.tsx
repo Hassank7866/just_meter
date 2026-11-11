@@ -1,6 +1,9 @@
 import React, { useRef } from 'react';
 import { Modal } from './Modal';
+import { DutyVerificationPanel } from './DutyVerificationPanel';
+import { useAuth } from '../context/AuthContext';
 import { SpottedVehicle } from '../api/client';
+import { snapshotUrl as getSnapshotUrl } from '../api/client';
 import {
   Download,
   MapPin,
@@ -20,12 +23,13 @@ interface SnapshotModalProps {
 }
 
 export const SnapshotModal: React.FC<SnapshotModalProps> = ({ vehicle, isOpen, onClose }) => {
+  const { user } = useAuth();
   const imgRef = useRef<HTMLImageElement>(null);
 
   if (!vehicle) return null;
 
   const isLawful = vehicle.status === 'LAWFUL';
-  const snapshotUrl = `/snapshots/${vehicle.image}`;
+  const snapshotUrl = getSnapshotUrl(vehicle.image);
 
   // Format Pakistani Standard Time
   let formattedTime = vehicle.timestamp;
@@ -54,6 +58,7 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ vehicle, isOpen, o
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Sighting Evidence: ${vehicle.plate_number}`} maxWidth="max-w-3xl">
+      <DutyVerificationPanel duty={vehicle.duty_verification} />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Image with BBox overlay */}
         <div className="lg:col-span-7 flex flex-col items-center">
@@ -72,7 +77,7 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ vehicle, isOpen, o
 
           <div className="mt-3 w-full flex items-center justify-between text-xs text-slate-400">
             <span className="font-mono">File: {vehicle.image}</span>
-            <a
+            {user?.role === 'Administrator' && <a
               href={snapshotUrl}
               download={vehicle.image}
               target="_blank"
@@ -80,7 +85,7 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ vehicle, isOpen, o
               className="btn-secondary py-1 px-3 text-xs"
             >
               <Download size={14} /> Download Evidence
-            </a>
+            </a>}
           </div>
         </div>
 
@@ -96,15 +101,15 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ vehicle, isOpen, o
                 <span className="badge-lawful text-sm py-1 px-3">
                   <CheckCircle2 size={16} /> LAWFUL SIGHTING
                 </span>
-              ) : (
+              ) : vehicle.status === 'VIOLATION' ? (
                 <span className="badge-violation text-sm py-1 px-3">
                   <XCircle size={16} /> VIOLATION DETECTED
                 </span>
-              )}
+              ) : <span className="text-sm text-amber-300">{vehicle.status.replace(/_/g, ' ')}</span>}
             </div>
 
             {/* Violation Details Banner if not lawful */}
-            {!isLawful && (
+            {vehicle.status === 'VIOLATION' && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
                 <AlertTriangle size={18} className="shrink-0 text-rose-400 mt-0.5" />
                 <div>

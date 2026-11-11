@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SpottedVehicle, fetchSpottedVehicles } from '../api/client';
+import { SpottedVehicle, fetchSpottedVehicles, snapshotUrl } from '../api/client';
 import { SnapshotModal } from '../components/SnapshotModal';
 import {
   Eye,
@@ -24,13 +24,15 @@ const AVAILABLE_AREAS = [
   'Poonch Division',
 ];
 
+import { VehicleProfileLink } from '../components/VehicleProfileLink';
+
 export const SpottedVehiclesPage: React.FC = () => {
   const [sightings, setSightings] = useState<SpottedVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'LAWFUL' | 'VIOLATION'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'LAWFUL' | 'VIOLATION' | 'REVIEW_REQUIRED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('ALL');
 
@@ -248,6 +250,7 @@ export const SpottedVehiclesPage: React.FC = () => {
           >
             Violations Only ({violationsCount})
           </button>
+          <button onClick={() => { setStatusFilter('REVIEW_REQUIRED'); setCurrentPage(1); }} className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === 'REVIEW_REQUIRED' ? 'bg-amber-700 text-white' : 'text-amber-300'}`}>Review required</button>
         </div>
 
         {/* Area dropdown & Search */}
@@ -322,7 +325,7 @@ export const SpottedVehiclesPage: React.FC = () => {
               <tbody>
                 {paginatedSightings.map((s, idx) => {
                   const isLawful = s.status === 'LAWFUL';
-                  const snapshotUrl = `/snapshots/${s.image}`;
+                  const imageUrl = snapshotUrl(s.image);
 
                   return (
                     <tr key={idx} className="cursor-pointer hover:bg-slate-800/40 transition-colors" onClick={() => setSelectedVehicle(s)}>
@@ -330,7 +333,7 @@ export const SpottedVehiclesPage: React.FC = () => {
                       <td className="w-16">
                         <div className="w-14 h-11 rounded-lg bg-black/60 border border-slate-700 overflow-hidden relative group">
                           <img
-                            src={snapshotUrl}
+                            src={imageUrl}
                             alt={s.plate_number}
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                             onError={(e) => {
@@ -347,6 +350,7 @@ export const SpottedVehiclesPage: React.FC = () => {
                           <span className="license-plate-badge text-xs">
                             {s.plate_number}
                           </span>
+                          <VehicleProfileLink reference={s._record_key ? { sighting_key: s._record_key } : { plate: s.plate_number }} />
                           <span className="text-[10px] text-emerald-400 font-mono font-semibold">
                             {formatConfidence(s.confidence)}% OCR
                           </span>
@@ -387,11 +391,11 @@ export const SpottedVehiclesPage: React.FC = () => {
                           <span className="badge-lawful text-xs">
                             <CheckCircle2 size={13} /> LAWFUL
                           </span>
-                        ) : (
+                        ) : s.status === 'VIOLATION' ? (
                           <span className="badge-violation text-xs">
                             <XCircle size={13} /> VIOLATION
                           </span>
-                        )}
+                        ) : <span className="text-xs text-amber-300">{s.status.replace(/_/g, ' ')}</span>}
                       </td>
 
                       {/* Violation Criteria */}
@@ -401,7 +405,7 @@ export const SpottedVehiclesPage: React.FC = () => {
                         ) : (
                           <span className="text-rose-300 font-semibold text-xs flex items-center gap-1">
                             <AlertTriangle size={12} className="text-rose-400 shrink-0" />
-                            <span>{s.violation_criteria || 'UNAUTHORIZED_ZONE'}</span>
+                            <span>{s.violation_criteria || s.decision_reason || 'Awaiting review'}</span>
                           </span>
                         )}
                       </td>

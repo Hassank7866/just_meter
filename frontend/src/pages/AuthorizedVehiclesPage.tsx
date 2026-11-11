@@ -7,6 +7,8 @@ import {
   deleteAuthorizedVehicle,
 } from '../api/client';
 import { Modal } from '../components/Modal';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../context/permissions';
 import {
   Search,
   Plus,
@@ -36,7 +38,11 @@ const AVAILABLE_AREAS = [
   'Poonch Division',
 ];
 
+import { VehicleProfileLink } from '../components/VehicleProfileLink';
+
 export const AuthorizedVehiclesPage: React.FC = () => {
+  const { user } = useAuth();
+  const canManageVehicles = can(user?.role, 'manage_registry');
   const [vehicles, setVehicles] = useState<AuthorizedVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +73,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
     officer_name: string;
     officer_phone: string;
     officer_email: string;
+    risk_context: '' | 'STANDARD' | 'SENSITIVE' | 'CRITICAL';
   }>({
     plate_number: '',
     vehicle_id: '',
@@ -79,6 +86,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
     officer_name: '',
     officer_phone: '',
     officer_email: '',
+      risk_context: '',
   });
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -120,6 +128,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
       officer_name: '',
       officer_phone: '',
       officer_email: '',
+      risk_context: '',
     });
     setFormError(null);
     setIsAddModalOpen(true);
@@ -150,6 +159,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
       officer_name: v.officer_name || '',
       officer_phone: v.officer_phone || '',
       officer_email: v.officer_email || '',
+      risk_context: v.risk_context || '',
     });
     setFormError(null);
     setIsAddModalOpen(true);
@@ -196,6 +206,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
       officer_name: formData.officer_name.trim(),
       officer_phone: formData.officer_phone.trim(),
       officer_email: formData.officer_email.trim(),
+      risk_context: formData.risk_context,
     };
 
     setIsSaving(true);
@@ -265,10 +276,10 @@ export const AuthorizedVehiclesPage: React.FC = () => {
           </p>
         </div>
 
-        <button onClick={handleOpenAdd} className="btn-primary">
+        {canManageVehicles && <button onClick={handleOpenAdd} className="btn-primary">
           <Plus size={16} />
           <span>Register New Vehicle</span>
-        </button>
+        </button>}
       </div>
 
       {/* KPI Cards */}
@@ -413,6 +424,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
                         <span className="license-plate-badge text-xs">
                           {v.plate_number}
                         </span>
+                        <VehicleProfileLink reference={{ plate: v.plate_number }} />
                       </td>
 
                       {/* Vehicle ID */}
@@ -486,6 +498,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
                       {/* Actions */}
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {canManageVehicles && <>
                           <button
                             onClick={() => handleOpenEdit(v)}
                             className="p-1.5 rounded-lg text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
@@ -500,6 +513,7 @@ export const AuthorizedVehiclesPage: React.FC = () => {
                           >
                             <Trash2 size={14} />
                           </button>
+                          </>}
                         </div>
                       </td>
                     </tr>
@@ -756,6 +770,16 @@ export const AuthorizedVehiclesPage: React.FC = () => {
           </div>
 
           {/* Row 6: Notes */}
+          <div>
+            <label className="block text-xs text-slate-300 mb-1">Assignment risk context</label>
+            <select className="glass-input" value={formData.risk_context}
+              onChange={e => setFormData({ ...formData, risk_context: e.target.value as typeof formData.risk_context })}>
+              <option value="">Not configured</option><option value="STANDARD">Standard</option>
+              <option value="SENSITIVE">Sensitive</option><option value="CRITICAL">Critical</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Set from the vehicle's approved assignment. Unconfigured context is shown as missing during assessment.</p>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
               Registry Notes

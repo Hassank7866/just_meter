@@ -1,3 +1,5 @@
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -5,6 +7,7 @@ class VehicleDetection(BaseModel):
     label: str
     confidence: float
     bbox: list[int] = Field(description="[x1, y1, x2, y2]")
+    track_id: str | None = None
 
 
 class PlateDetection(BaseModel):
@@ -14,12 +17,32 @@ class PlateDetection(BaseModel):
     saved: bool
     reason: str | None = None
     government_match: dict[str, str] | None = None
-    compliance: dict[str, str] | None = None
+    compliance: dict[str, Any] | None = None
+    recognition_id: str | None = None
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    suggested_text: str | None = None
+    valid_format: bool | None = None
+    review_status: str | None = None
+    review_reason: str | None = None
+    plate_crop: str | None = None
+    evidence_id: str | None = None
+    track_id: str | None = None
 
 
 class FrameResponse(BaseModel):
+    event_id: str | None = None
     timestamp: str
+    camera_id: str = "CAM-001"
     camera_area: str
+    source_type: str = "LIVE_FRAME"
+    frame_number: int | None = None
+    vehicle_count: int = 0
+    new_track_count: int = 0
+    new_crossing_count: int = 0
+    crossings: list[dict] = Field(default_factory=list)
+    model_name: str = "yolo11n.pt"
+    model_version: str = "YOLO11"
     latitude: float | None = None
     longitude: float | None = None
     frame_width: int | None = None
@@ -27,6 +50,32 @@ class FrameResponse(BaseModel):
     image_data: str | None = None
     vehicles: list[VehicleDetection]
     plates: list[PlateDetection]
+
+
+class VideoAnalysisResponse(BaseModel):
+    source_type: str = "RECORDED_VIDEO"
+    camera_id: str
+    camera_area: str
+    filename: str
+    frames_read: int
+    frames_analyzed: int
+    vehicles_detected: int
+    unique_vehicles: int = 0
+    checkpoint_crossings: int = 0
+    events: list[dict]
+
+
+class PlateReviewRequest(BaseModel):
+    corrected_text: str = ""
+    status: str = Field(description="ACCEPTED or REJECTED")
+    reviewer: str = "System Administrator"
+    notes: str = ""
+
+
+class EvidenceReviewRequest(BaseModel):
+    review_status: str = Field(description="UNDER_REVIEW or VERIFIED")
+    reviewer: str = "System Administrator"
+    notes: str = ""
 
 
 class DetectionRecord(BaseModel):
@@ -51,6 +100,7 @@ class ApprovedVehicleCreate(BaseModel):
     officer_name: str = ""
     officer_phone: str = ""
     officer_email: str = ""
+    risk_context: Literal["", "STANDARD", "SENSITIVE", "CRITICAL"] = ""
 
 
 class ApprovedVehicleUpdate(BaseModel):
@@ -63,6 +113,7 @@ class ApprovedVehicleUpdate(BaseModel):
     officer_name: str | None = None
     officer_phone: str | None = None
     officer_email: str | None = None
+    risk_context: Literal["", "STANDARD", "SENSITIVE", "CRITICAL"] | None = None
 
 
 class AdminLoginRequest(BaseModel):
@@ -114,6 +165,5 @@ class MetaWhatsAppConfigRequest(BaseModel):
 class TestWhatsAppRequest(BaseModel):
     recipient_phone: str
     config: MetaWhatsAppConfigRequest | None = None
-
 
 

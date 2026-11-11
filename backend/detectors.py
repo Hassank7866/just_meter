@@ -51,10 +51,12 @@ class DetectorService:
             if ocr is None or not ocr.text or not ocr.confidence:
                 continue
             confidence = mean(ocr.confidence) if isinstance(ocr.confidence, list) else ocr.confidence
-            text = "".join(str(ocr.text).upper().split())
+            raw_text = str(ocr.text).strip().upper()
+            text = "".join(raw_text.split())
             bbox = result.detection.bounding_box
             plates.append({
                 "plate_number": text,
+                "raw_text": raw_text,
                 "confidence": round(float(confidence), 4),
                 "bbox": [int(bbox.x1), int(bbox.y1), int(bbox.x2), int(bbox.y2)],
             })

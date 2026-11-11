@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, loginAdmin } from '../api/client';
+import { User, loginAdmin, governanceRequest } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -19,18 +19,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem(STORAGE_KEY_USER);
-      const savedToken = localStorage.getItem(STORAGE_KEY_TOKEN);
-      if (savedUser && savedToken) {
-        setUser(JSON.parse(savedUser));
-      }
-    } catch {
+    let active = true;
+    if (!localStorage.getItem(STORAGE_KEY_TOKEN)) { setLoading(false); return; }
+    governanceRequest<User>('auth/me').then(current => {
+      if (active) { setUser(current); localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(current)); }
+    }).catch(() => {
+      localStorage.removeItem(STORAGE_KEY_USER); localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
       localStorage.removeItem(STORAGE_KEY_USER);
       localStorage.removeItem(STORAGE_KEY_TOKEN);
-    } finally {
-      setLoading(false);
-    }
+    };
+    window.addEventListener('justmeter:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('justmeter:unauthorized', handleUnauthorized);
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -41,9 +47,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY_USER);
-    localStorage.removeItem(STORAGE_KEY_TOKEN);
+    governanceRequest('auth/logout', 'POST').then(() => {
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }).catch(error => window.alert(`Could not revoke the session: ${error.message}`));
   };
 
   return (

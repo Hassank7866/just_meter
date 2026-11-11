@@ -11,7 +11,7 @@ import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BRIDGE_DIR = PROJECT_ROOT / "whatsapp-bridge"
-BRIDGE_URL = "http://127.0.0.1:5005"
+BRIDGE_URL = os.getenv("WHATSAPP_BRIDGE_URL", "http://127.0.0.1:5005").rstrip("/")
 
 _bridge_process: subprocess.Popen | None = None
 _last_start_attempt: float = 0.0

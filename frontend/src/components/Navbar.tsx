@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SystemStats } from '../api/client';
 import {
+  LayoutDashboard,
   ShieldCheck,
   Eye,
   Camera,
@@ -13,11 +14,16 @@ import {
   ChevronDown,
   MessageSquare,
   Settings,
+  ScanLine,
+  Archive,
+  MapPin,
 } from 'lucide-react';
 
+export type AppTab = 'users' | 'reports' | 'audit' | 'dashboard' | 'vims' | 'digital-twin' | 'challans' | 'authorized' | 'spotted' | 'anpr-review' | 'evidence' | 'geofences' | 'violations' | 'live-camera';
+
 interface NavbarProps {
-  activeTab: 'authorized' | 'spotted' | 'violations' | 'live-camera';
-  setActiveTab: (tab: 'authorized' | 'spotted' | 'violations' | 'live-camera') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
   stats: SystemStats | null;
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -55,72 +61,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
           </div>
-
-          {/* Center: Minimalist Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800/90 shadow-inner">
-            {/* Tab 1: Authorized Fleet */}
-            <button
-              onClick={() => setActiveTab('authorized')}
-              className={`nav-tab !px-3 !py-1.5 !text-xs ${activeTab === 'authorized' ? 'active' : ''}`}
-              title="Authorized Government Fleet Registry"
-            >
-              <ShieldCheck size={15} className={activeTab === 'authorized' ? 'text-sky-400' : 'text-slate-400'} />
-              <span>Fleet</span>
-              {stats && (
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                  activeTab === 'authorized' ? 'bg-sky-500/30 text-sky-200' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {stats.authorized_vehicles_count}
-                </span>
-              )}
-            </button>
-
-            {/* Tab 2: Spotted Vehicles */}
-            <button
-              onClick={() => setActiveTab('spotted')}
-              className={`nav-tab !px-3 !py-1.5 !text-xs ${activeTab === 'spotted' ? 'active' : ''}`}
-              title="Spotted Vehicles & Duty Verification Log"
-            >
-              <Eye size={15} className={activeTab === 'spotted' ? 'text-sky-400' : 'text-slate-400'} />
-              <span>Spotted</span>
-              {stats && stats.violations_count > 0 ? (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 border border-rose-500/40">
-                  {stats.violations_count}
-                </span>
-              ) : stats ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              ) : null}
-            </button>
-
-            {/* Tab 3: Violations & E-Challans */}
-            <button
-              onClick={() => setActiveTab('violations')}
-              className={`nav-tab !px-3 !py-1.5 !text-xs ${activeTab === 'violations' ? 'active' : ''}`}
-              title="Violations & Official E-Challans"
-            >
-              <ShieldAlert size={15} className={activeTab === 'violations' ? 'text-rose-400' : 'text-rose-400/70'} />
-              <span>Violations</span>
-              {stats && stats.violations_count > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-rose-600 text-white font-bold animate-pulse shadow-sm shadow-rose-600/50">
-                  {stats.violations_count}
-                </span>
-              )}
-            </button>
-
-            {/* Tab 4: Live Camera Detection */}
-            <button
-              onClick={() => setActiveTab('live-camera')}
-              className={`nav-tab !px-3 !py-1.5 !text-xs ${activeTab === 'live-camera' ? 'active !text-emerald-300' : ''}`}
-              title="Live AI Camera Detection & Bounding Boxes"
-            >
-              <Camera size={15} className={activeTab === 'live-camera' ? 'text-emerald-400 animate-pulse' : 'text-emerald-400/80'} />
-              <span>Live Camera</span>
-              <span className="flex items-center gap-1 text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold font-mono border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                LIVE
-              </span>
-            </button>
-          </nav>
 
           {/* Right: Actions (WhatsApp, Refresh, Admin Dropdown) */}
           <div className="flex items-center gap-2 shrink-0">
@@ -184,7 +124,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                     <div className="px-3 py-1.5 text-[11px] text-slate-400 flex items-center gap-1.5">
                       <ShieldAlert size={13} className="text-emerald-400" />
-                      <span>Super Admin Role</span>
+                      <span>{user?.role || 'Authenticated User'}</span>
                     </div>
                     {onOpenWhatsAppSettings && (
                       <button
@@ -215,8 +155,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile Navigation Tabs (visible on small screens below md) */}
-        <div className="md:hidden flex items-center justify-around py-1.5 border-t border-slate-800/80 gap-1">
+        {/* Scrollable navigation keeps every module accessible at all widths. */}
+        <nav aria-label="Main navigation" className="flex items-center justify-start overflow-x-auto overscroll-x-contain py-1.5 border-t border-slate-800/80 gap-1 scrollbar-visible">
+          {(['reports', ...(['Administrator', 'Auditor', 'Supervisory Officer'].includes(user?.role || '') ? ['audit'] : []), ...(user?.role === 'Administrator' ? ['users'] : [])] as AppTab[]).map(tab => <button key={tab} onClick={() => setActiveTab(tab)} className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium ${activeTab === tab ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400'}`}>{tab === 'users' ? 'User access' : tab === 'reports' ? 'Reports' : 'Audit'}</button>)}
+          {user?.role !== 'Auditor' && <>
+          {user?.role === 'Administrator' && <button onClick={() => setActiveTab('vims')} className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium ${activeTab === 'vims' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400'}`}>VIMS</button>}
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${activeTab === 'dashboard' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400'}`}
+          >
+            <LayoutDashboard size={13} />
+            <span>Overview</span>
+          </button>
           <button
             onClick={() => setActiveTab('authorized')}
             className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
@@ -225,6 +175,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <ShieldCheck size={13} />
             <span>Fleet</span>
+            {stats && <span className="text-[10px] text-slate-400">{stats.authorized_vehicles_count}</span>}
+          </button>
+
+          <button onClick={() => setActiveTab('digital-twin')}
+            className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${activeTab === 'digital-twin' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400'}`}>
+            <User size={13} /><span>Digital Twin</span>
+          </button>
+          <button onClick={() => setActiveTab('challans')}
+            className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${activeTab === 'challans' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400'}`}>
+            <Archive size={13} /><span>Challans</span>
           </button>
 
           <button
@@ -238,6 +198,34 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('anpr-review')}
+            className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
+              activeTab === 'anpr-review' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400'
+            }`}
+          >
+            <ScanLine size={13} />
+            <span>ANPR</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('evidence')}
+            className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
+              activeTab === 'evidence' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' : 'text-slate-400'
+            }`}
+          >
+            <Archive size={13} />
+            <span>Evidence</span>
+          </button>
+
+          {user?.role === 'Administrator' && <button
+            onClick={() => setActiveTab('geofences')}
+            className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${activeTab === 'geofences' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'text-violet-400/70'}`}
+          >
+            <MapPin size={13} />
+            <span>Zones</span>
+          </button>}
+
+          <button
             onClick={() => setActiveTab('violations')}
             className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
               activeTab === 'violations' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-rose-400/70'
@@ -245,9 +233,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <ShieldAlert size={13} />
             <span>Violations</span>
+            {!!stats?.violations_count && <span className="text-[10px] text-rose-300">{stats.violations_count}</span>}
           </button>
 
-          <button
+          {user?.role === 'Administrator' && <button
             onClick={() => setActiveTab('live-camera')}
             className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
               activeTab === 'live-camera' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'text-emerald-400/80 bg-emerald-950/30'
@@ -255,8 +244,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Camera size={13} className="text-emerald-400" />
             <span>Live AI</span>
-          </button>
-        </div>
+          </button>}
+          </>}
+        </nav>
       </div>
     </header>
   );
